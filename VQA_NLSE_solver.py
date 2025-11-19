@@ -102,8 +102,7 @@ def soliton_analytical_folded(t, x, x0, a, v):
     # 考虑5个周期：x-4π, x-2π, x, x+2π, x+4π，这样可以覆盖孤子可能出现的所有位置
     candidates = [soliton_analytical(t, x+i*2*np.pi, x0, a, v) for i in range(-2, 3)]
     
-    # 按幅度大小排序，选择最大的（最接近真实值的）
-    # 使用np.abs的平方作为排序键，因为幅度越大表示越接近孤子中心
+    # 按幅度大小排序，幅度越大表示越接近孤子中心，选择最大的（最接近真实值的）
     candidates.sort(key=lambda val: np.square(np.abs(val)))
     
     # 返回幅度最大的候选值
@@ -205,7 +204,6 @@ def stateFromParameters(ansatz, parameters, n, d):
     ansatz(qc, n, d, 0, parameters)
     
     # 返回理想的状态向量（无噪声的完美量子态）
-    # Statevector会计算电路作用在|00...0⟩上的结果
     return Statevector(qc)
 
 
@@ -236,8 +234,8 @@ def cost_function_fast(parameters, parameters_0, ansatz, n, d, s, delta_t, start
     Args:
         parameters: 当前时刻的参数（要优化的参数），长度为2*n*(d+1)
         parameters_0: 前一时刻的参数（或初始态向量）
-                     - 如果是参数：长度为2*n*(d+1)的数组
-                     - 如果是状态向量：长度为2^n的复数数组
+                      - 如果是参数：长度为2*n*(d+1)的数组
+                      - 如果是状态向量：长度为2^n的复数数组
         ansatz: ansatz函数，用于从参数生成量子态
         n: 量子比特数量
         d: 电路深度
@@ -266,31 +264,29 @@ def cost_function_fast(parameters, parameters_0, ansatz, n, d, s, delta_t, start
     # 在动量空间应用拉普拉斯算子的演化
     # T是动能算符（拉普拉斯算子），在动量空间中是k²
     
-    # 3.1 转换到动量空间（FFT）
+    # 转换到动量空间（FFT）
     psi_k = np.fft.fft(psi_0)
     
-    # 3.2 构造动量网格k
+    # 构造动量网格k
     # FFT的默认顺序是[0, 1, 2, ..., N/2-1, -N/2, ..., -1]
     # 我们需要重新排列为[-N/2, ..., -1, 0, 1, ..., N/2-1]
     k = np.concatenate([np.arange(0, N//2), np.arange(-N//2, 0)])
     
-    # 3.3 在动量空间应用演化算子：exp(-i*dt/2 * k²)
-    # 这是拉普拉斯算子在动量空间的表示
+    # 在动量空间应用演化算子【拉普拉斯算子在动量空间的表示】：exp(-i*dt/2 * k²)
     psi_k_evolved = psi_k * np.exp(-1j * delta_t / 2 * k**2)
     
-    # 3.4 转换回位置空间（IFFT）
+    # 转换回位置空间（IFFT）
     # 得到演化后的态|φ⟩ = e^{-i Δt/2 T} |psi_0>
     phi = np.fft.ifft(psi_k_evolved)
 
     # ===== 步骤4：计算成本函数 =====
     # 成本函数 = 重叠项 + 非线性项
     
-    # 4.1 重叠项：-Re⟨ψ|φ⟩
+    # 重叠项：-Re⟨ψ|φ⟩
     # 衡量当前试探态|ψ⟩与演化后态|φ⟩的重叠
-    # 负号是因为我们要最小化，而重叠越大越好
     overlap_term = -np.real(np.vdot(psi, phi))
     
-    # 4.2 非线性项：(s Δt / 2π) * Im⟨ψ| |φ|²φ⟩
+    # 非线性项：(s Δt / 2π) * Im⟨ψ| |φ|²φ⟩
     # 处理NLSE中的非线性项|ψ|²ψ
     # |φ|²是概率密度，|φ|²φ是非线性项
     # 虚部是因为非线性项在NLSE中是纯虚数
@@ -338,12 +334,11 @@ def cost_function_qiskit(parameters, parameters_0, ansatz, n, d, s, delta_t, sta
         ansatz(qc_old, n, d, 0, parameters_0)
     
     # 应用时间演化：QFT -> 拉普拉斯算子 -> IQFT
-    # 这相当于在动量空间应用演化，然后转换回位置空间
-    qft(qc_old, n)  # 量子傅里叶变换（转换到动量空间）
+    qft(qc_old, n)  # 量子傅里叶变换
     qc_old.x(n-1)   # X门用于调整索引偏移（因为QFT的索引顺序）
     quadraticExponential(qc_old, -delta_t/2, n)  # 应用拉普拉斯算子的演化 exp(-i*dt/2 * k²)
     qc_old.x(n-1)   # 再次X门恢复
-    iqft(qc_old, n) # 逆量子傅里叶变换（转换回位置空间）
+    iqft(qc_old, n) # 逆量子傅里叶变换
 
     # ===== 步骤2：将演化后的态转换为受控门 =====
     # 将整个电路编译为单个门，以便在更大的电路中使用
@@ -369,8 +364,8 @@ def cost_function_qiskit(parameters, parameters_0, ansatz, n, d, s, delta_t, sta
     # Hadamard测试的标准结构
     qc_overlap.h(0)  # 在辅助量子比特上应用H门，创建叠加态 (|0⟩+|1⟩)/√2
 
-    # 应用受控的旧态和试验态的逆
-    qc_overlap.append(unitary_old, range(n+1))        # 受控的旧态演化
+    # 应用受控的旧态和试验态的逆演化
+    qc_overlap.append(unitary_old, range(n+1))  # 受控的旧态演化
     qc_overlap.append(unitary_new.inverse(), range(n+1))  # 受控的试验态逆演化
 
     qc_overlap.h(0)  # 再次应用H门
@@ -674,11 +669,9 @@ for i in range(2**n):
     # 计算位置：从-π开始，每个点间隔2π/(2^n)
     x_pos = -np.pi + 2*np.pi*i/(2**n)
     # 使用折叠的解析解（处理周期性边界条件）
-    # 这确保了解在周期性边界条件下是正确的
     initial_condition[i] = soliton_analytical_folded(0, x_pos, x0, a, v)
 
-# 归一化：确保量子态的总概率为1
-# 这是量子力学的基本要求：⟨ψ|ψ⟩ = 1
+# 归一化：确保量子态的总概率为1（量子力学的基本要求：⟨ψ|ψ⟩ = 1）
 initial_condition /= np.linalg.norm(initial_condition)
 
 
@@ -694,12 +687,10 @@ initial_condition /= np.linalg.norm(initial_condition)
 
 # 初始化L-BFGS-B优化器
 # L-BFGS-B是一种准牛顿优化算法，适合处理有界约束的优化问题
-# 它是L-BFGS算法的有界版本，在变分量子算法中广泛使用
 optimizer = L_BFGS_B(maxiter=maxiter, maxfun=maxfun, ftol=ftol)
 
 # 存储每个时间步的最优参数
-# 形状：(时间步数, 参数数量)
-# 参数数量 = 2 * n * (d+1)（每个量子比特每层需要2个旋转角度）
+# 形状：(时间步数, 参数数量)，即(time_steps, 2*n*(d+1))
 parameters = np.zeros((time_steps, 2*n*(d+1)))
 
 # ===== 第一步：从初始条件开始 =====
@@ -710,18 +701,16 @@ cost_function = lambda x: cost_function_fast(x, initial_condition, ansatz, n, d,
 # 记录最佳成本函数值
 fvalue_opt = float("Inf")
 
-# 尝试多个随机初始值，选择最好的
-# 这是因为第一步没有好的初始猜测，需要多次尝试
-# 使用随机初始值可以避免陷入局部最优解
+# 尝试多个随机初始值（可以避免陷入局部最优解），选择最好的
 for i in range(initial_runs):
     print("Step 1/{time_steps} : {i}/{initial_runs}".format(time_steps=time_steps, i=i+1, initial_runs=initial_runs))
 
-    # 使用随机初始参数进行优化
+    # 使用随机初始参数进行优化（因为第一步没有好的初始猜测，需要多次尝试）
     # 参数范围：[0, 2π]，因为旋转角度是周期性的
     # 随机初始化可以探索参数空间的不同区域
     initial_params = 2*np.pi*np.random.random(2*n*(d+1))
     
-    # 执行优化，找到最小化成本函数的参数
+    # 执行优化，找到最小化成本函数的参数（即找到最优参数）
     sol = optimizer.minimize(cost_function, initial_params)
     
     # 评估优化后的成本函数值
@@ -765,10 +754,8 @@ psi = np.zeros((time_steps+1, 2**n), dtype=complex)
 psi[0, :] = initial_condition
 
 # 从每个时间步的参数生成对应的量子态
-# 这允许我们查看波函数随时间的演化
 for i in range(time_steps):
-    # 从参数生成状态向量
-    # 这给出了优化后的参数对应的实际波函数
+    # 从参数生成状态向量，给出优化后的参数对应的实际波函数
     psi[i+1, :] = stateFromParameters(ansatz, parameters[i, 0:2*n*(d+1)], n, d)
 
 
@@ -779,7 +766,6 @@ for i in range(time_steps):
 
 # 绘制波包随时间的演化
 # 每10个时间步绘制一次，避免图像过于拥挤
-# 这样可以清楚地看到波包的演化过程
 for i in range(0, time_steps+1, 10):
     # 绘制概率密度 |ψ|² 随位置的变化
     # x/np.pi 将位置归一化到 [-1, 1]（单位是π）
@@ -787,7 +773,7 @@ for i in range(0, time_steps+1, 10):
     plt.plot(x/np.pi, np.square(np.abs(psi[i, :])), label="i={i}".format(i=i))
 
 # 添加图例和标签
-plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0))  # 图例放在左上角
+plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0))
 plt.xlabel("$x$ [$\pi$]")  # x轴：位置（单位是π）
 plt.ylabel("$|\Psi|^2$")   # y轴：概率密度
 plt.tight_layout()         # 自动调整布局，确保所有元素都可见
@@ -795,8 +781,7 @@ plt.tight_layout()         # 自动调整布局，确保所有元素都可见
 # 保存图像
 plt.savefig("./image.png")  # 保存为PNG格式的图像文件
 
-# 保存数据（参数和波函数）供后续分析
-# 这允许我们在不重新运行模拟的情况下进行进一步分析
+# 保存数据（参数和波函数）供后续分析（可以在不重新运行模拟的情况下进行进一步分析）
 np.savez("./data.npz", parameters=parameters, psi=psi)
 
 # 显示图像
