@@ -70,13 +70,8 @@ def soliton_analytical(t, x, x0, a, v):
     Returns:
         complex: 孤子解的复振幅值，形状与输入x相同
     """
-    # 计算包络部分：a / cosh(a*(x-x0-v*t))
-    envelope = a / np.cosh(a*(x-x0-v*t))
-    
-    # 计算相位部分：exp(i*v*(x-x0) + i*(a²-v²)*t/2)
-    phase = np.exp(1j*v*(x-x0) + 1j*(a*a-v*v)*t/2.0)
-    
-    return envelope * phase
+    # 返回一维无势聚焦型NLSE的精确解析解，即公式3
+    return a / np.cosh(a*(x-x0-v*t)) * np.exp(1j*v*(x-x0)+1j*(a*a-v*v)*t/2.0)
 
 
 def soliton_analytical_folded(t, x, x0, a, v):
@@ -103,7 +98,7 @@ def soliton_analytical_folded(t, x, x0, a, v):
     candidates = [soliton_analytical(t, x+i*2*np.pi, x0, a, v) for i in range(-2, 3)]
     
     # 按幅度大小排序，幅度越大表示越接近孤子中心，选择最大的（最接近真实值的）
-    candidates.sort(key=lambda val: np.square(np.abs(val)))
+    candidates.sort(key=lambda a: np.square(np.abs(a)))
     
     # 返回幅度最大的候选值
     return candidates[-1]
@@ -166,12 +161,11 @@ def ansatz(qc, n, d, offset, parameters, conj=False):
 
         # 在层之间添加CNOT门来创建纠缠（最后一层不需要）
         if i != d:
-            # 创建链式CNOT：0->1->2->...->(n-2)->(n-1)
-            # 这是线性链结构，无闭环，用于创建相邻量子比特之间的纠缠
-            for k in range(n - 1):
-                # CNOT门：控制比特k，目标比特k+1
-                # 当控制比特为|1⟩时，翻转目标比特
-                qc.cx(k + offset, k + 1 + offset)
+            # 创建链式CNOT：0->1->2->...->(n-1)->0（形成环）
+            for k in range(n-1):
+                qc.cx(k+offset, k+1 + offset)
+            # 最后一个CNOT连接回第一个量子比特，形成周期边界条件
+            qc.cx(n-1 + offset, offset)
 
 
 def stateFromParameters(ansatz, parameters, n, d):
@@ -245,9 +239,7 @@ def cost_function_fast(parameters, parameters_0, ansatz, n, d, s, delta_t, start
     
     Returns:
         float: 成本函数值（越小越好，理想情况下应该接近0）
-    """
-    N = 2**n  # 空间离散化点数
-    
+    """    
     # ===== 步骤1：获取前一时刻的态 =====
     if startFromStateVector:
         # 如果直接提供了状态向量，直接使用
@@ -264,33 +256,35 @@ def cost_function_fast(parameters, parameters_0, ansatz, n, d, s, delta_t, start
     # 在动量空间应用拉普拉斯算子的演化
     # T是动能算符（拉普拉斯算子），在动量空间中是k²
     
-    # 转换到动量空间（FFT）
-    psi_k = np.fft.fft(psi_0)
+    # 转换到动量空间（傅里叶变换）
+    # fftshift将零频率移到中心，便于处理
+    psi_0 = np.fft.fftshift(np.fft.fft(psi_0))
     
-    # 构造动量网格k
-    # FFT的默认顺序是[0, 1, 2, ..., N/2-1, -N/2, ..., -1]
-    # 我们需要重新排列为[-N/2, ..., -1, 0, 1, ..., N/2-1]
-    k = np.concatenate([np.arange(0, N//2), np.arange(-N//2, 0)])
-    
-    # 在动量空间应用演化算子【拉普拉斯算子在动量空间的表示】：exp(-i*dt/2 * k²)
-    psi_k_evolved = psi_k * np.exp(-1j * delta_t / 2 * k**2)
-    
-    # 转换回位置空间（IFFT）
-    # 得到演化后的态|φ⟩ = e^{-i Δt/2 T} |psi_0>
-    phi = np.fft.ifft(psi_k_evolved)
+    # 在动量空间应用拉普拉斯算子的演化
+    # 拉普拉斯算子在动量空间是 -k²，所以演化算子是 exp(-i*dt/2 * k²)
+    # 这里k的范围是 -2^n/2 到 2^n/2-1
+    k_values = np.linspace(-2**n/2, 2**n/2-1, 2**n)
+    psi_0 *= np.exp( -1j * delta_t/2 * np.square(k_values) )
 
+    # 修正相位（由于FFT的索引偏移）
+    psi_0 *= np.exp( 1j * delta_t/2 * (-2**n/2)**2 )
+    
+    # 转换回位置空间（逆傅里叶变换）
+    # 得到演化后的态|φ⟩ = e^{-i Δt/2 T} |psi_0>
+    psi_0 = np.fft.ifft(np.fft.ifftshift(psi_0))
+    
     # ===== 步骤4：计算成本函数 =====
     # 成本函数 = 重叠项 + 非线性项
     
     # 重叠项：-Re⟨ψ|φ⟩
     # 衡量当前试探态|ψ⟩与演化后态|φ⟩的重叠
-    overlap_term = -np.real(np.vdot(psi, phi))
+    overlap_term = -np.real( np.vdot(psi, psi_0) )
     
     # 非线性项：(s Δt / 2π) * Im⟨ψ| |φ|²φ⟩
     # 处理NLSE中的非线性项|ψ|²ψ
     # |φ|²是概率密度，|φ|²φ是非线性项
     # 虚部是因为非线性项在NLSE中是纯虚数
-    nonlinear_term = (s * delta_t / (2 * np.pi)) * np.imag(np.vdot(psi, np.abs(phi)**2 * phi))
+    nonlinear_term = s * delta_t / (2*np.pi) * (2**n) * np.imag( np.vdot( psi, np.square(np.abs(psi_0)) * psi_0 ) )
     
     return overlap_term + nonlinear_term
 
