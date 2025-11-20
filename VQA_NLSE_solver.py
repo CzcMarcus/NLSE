@@ -514,96 +514,75 @@ def iqft(circuit, n, indexOffset=0):
         circuit.h(i+indexOffset)
 
 
-def U_ij(circuit, i, j, gamma, indexOffset=0):
+def U_ij(circuit, i, j, beta, gamma, indexOffset = 0):
     """
-    实现 x² 的交叉项相位：exp(i * gamma * 2 * 2^(i+j) * b_i * b_j)。
+    实现二次相位门 U_ij：在量子比特i和j之间应用受控相位门
     
-    这个函数用于实现二次型相位算子的交叉项。当我们需要实现exp(i*gamma*x²)时，
-    x²可以展开为对角项和交叉项的和。这个函数处理交叉项。
+    这是实现 exp(i*gamma*x²) 的一部分，其中x²的交叉项（i≠j）通过
+    受控相位门实现。
     
-    数学原理：
-    - x = -2^(n-1) + Σ b_k * 2^k（二进制表示）
-    - x²的交叉项：b_i * b_j * 2^(i+j+1)
-    - 相位：gamma * 2 * 2^(i+j) = gamma * 2^(i+j+1)
-    
-    注意：此函数假设 i < j，且只调用一次（避免重复计算）。
-    
-    Args:
-        circuit: 量子电路对象（会被修改）
-        i, j: 量子比特索引，满足 i < j
-        gamma: 相位参数（例如 gamma = -delta_t / 2）
-        indexOffset: 寄存器起始偏移（用于多量子比特系统）
+    参数：
+        circuit: 量子电路对象
+        i, j: 量子比特索引（i≠j）
+        beta: 偏移参数（用于处理负索引）
+        gamma: 相位参数
+        indexOffset: 起始索引
     """
-    # 计算相位：gamma * 2^(i+j+1)
-    phase = 2 * gamma * (2 ** (i + j))
-    
-    # 应用受控相位门：当b_i和b_j都为1时，应用相位
-    circuit.cp(phase, i + indexOffset, j + indexOffset)
+    # 交叉项的相位：gamma * 2^(i+j)
+    circuit.cp(gamma*2**(i+j), i+indexOffset, j+indexOffset)
 
 
-def U_ii(circuit, i, beta, gamma, indexOffset=0):
+def U_ii(circuit, i, beta, gamma, indexOffset = 0):
     """
-    实现 x² 的对角项相位：exp(i * gamma * (2^(2i) + 2*beta*2^i) * b_i)。
+    实现二次相位门 U_ii：在量子比特i上应用相位门
     
-    这个函数用于实现二次型相位算子的对角项。当我们需要实现exp(i*gamma*x²)时，
-    x²可以展开为对角项和交叉项的和。这个函数处理对角项。
+    这是实现 exp(i*gamma*x²) 的一部分，其中x²的对角项（i=j）通过
+    单量子比特相位门实现。
     
-    数学原理：
-    - x = beta + Σ b_k * 2^k，其中beta = -2^(n-1)是偏移量
-    - x²的对角项：b_i² * 2^(2i) + 2*beta*b_i * 2^i
-    - 由于b_i是二进制（0或1），b_i² = b_i
-    - 相位：gamma * (2^(2i) + 2*beta*2^i)
-    
-    Args:
-        circuit: 量子电路对象（会被修改）
+    参数：
+        circuit: 量子电路对象
         i: 量子比特索引
-        beta: 偏移量，beta = -2^(n-1)，用于处理有符号整数表示
-        gamma: 相位参数（例如 gamma = -delta_t / 2）
-        indexOffset: 寄存器起始偏移（用于多量子比特系统）
+        beta: 偏移参数（用于处理负索引）
+        gamma: 相位参数
+        indexOffset: 起始索引
     """
-    # 计算相位：gamma * (2^(2i) + 2*beta*2^i)
-    phase = gamma * (2 ** (2 * i) + 2 * beta * (2 ** i))
-    
-    # 应用相位门：当b_i为1时，应用相位
-    circuit.p(phase, i + indexOffset)
+    # 对角项的相位：gamma * (2^(2i) + 2*beta*2^i)
+    # 这对应于 x² 项，其中 x = -N/2 + sum(2^j * bit_j)
+    circuit.p(gamma*( 2**(2*i)+2*beta*2**i ), i+indexOffset)
 
 
-def quadraticExponential(circuit, gamma, n, indexOffset=0):
+def quadraticExponential(circuit, gamma, n, indexOffset = 0):
     """
-    实现 exp(i * gamma * x²)，其中 x = -2^(n-1) + sum_{k=0}^{n-1} b_k * 2^k。
+    实现二次指数演化算子：exp(i*gamma*x²)
     
-    这对应于动量空间中的拉普拉斯演化：exp(-i * (delta_t / 2) * k²)
-    此时应传入 gamma = -delta_t / 2。
+    这个函数实现了拉普拉斯算子在动量空间的演化。
+    在动量空间，拉普拉斯算子是 -k²，所以演化算子是 exp(-i*dt/2 * k²)。
     
     实现原理：
-    - x²可以展开为对角项和交叉项的和
-    - 对角项：使用U_ii函数实现
-    - 交叉项：使用U_ij函数实现（i < j，避免重复）
+    - 将x表示为二进制：x = -N/2 + sum(2^i * bit_i)
+    - x²可以展开为：x² = sum_i sum_j 2^(i+j) * bit_i * bit_j + 对角项
+    - 使用受控相位门实现交叉项，使用相位门实现对角项
     
-    编码说明：
-    - 计算基态 |b_{n-1}...b_0> 表示整数 x ∈ [-2^(n-1), 2^(n-1) - 1]
-    - 这是二进制补码表示，用于表示有符号整数
-    
-    Args:
-        circuit: 量子电路对象（会被修改）
-        gamma: 相位系数（实数），例如 gamma = -delta_t / 2
+    参数：
+        circuit: 量子电路对象
+        gamma: 相位参数（通常是 -delta_t/2）
         n: 量子比特数量
-        indexOffset: 寄存器起始偏移（默认 0）
+        indexOffset: 起始索引
+    
+    注意：
+        x的范围是 -N/2 到 N/2-1，其中 N = 2^n
     """
-    # 计算偏移量beta，使得 x = beta + Σ b_i 2^i
-    # beta = -2^(n-1) 使得x的范围是[-2^(n-1), 2^(n-1)-1]
-    beta = - (2 ** (n - 1))
+    beta = -2**n/2  # 偏移量，使得x从-N/2开始
 
-    # 对角项：i == j
-    # 对每个量子比特应用对角项相位
+    # 对所有量子比特对应用相位门
     for i in range(n):
-        U_ii(circuit, i, beta, gamma, indexOffset)
-
-    # 交叉项：i < j（避免重复，因为U_ij已经处理了i<j的情况）
-    # 对所有量子比特对应用交叉项相位
-    for i in range(n):
-        for j in range(i + 1, n):
-            U_ij(circuit, i, j, gamma, indexOffset)
+        for j in range(n):
+            if i == j:
+                # 对角项：使用单量子比特相位门
+                U_ii(circuit, i, beta, gamma, indexOffset)
+            else:
+                # 交叉项：使用受控相位门
+                U_ij(circuit, i, j, beta, gamma, indexOffset)
 
 
 # ============================================================================
