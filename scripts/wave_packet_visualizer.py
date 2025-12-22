@@ -42,8 +42,8 @@ def visualize_wave_packet(
     """
     print("Visualizing results...")
     
-    # 在 [-π, π] 区间上采样了 64 个点，索引为 1-64
-    x = np.arange(1, 2**config.n + 1)
+    # 在 [-π, π] 区间上采样了 64 个点，索引为 0-63
+    x = np.arange(0, 2**config.n)
     
     # 计算归一化因子，将归一化量子态恢复为物理波函数的概率密度
     # 物理波函数的归一化条件：∫|Ψ(x)|²dx = 2a
@@ -79,7 +79,7 @@ def visualize_wave_packet(
                 color=color,
                 linestyle=linestyle, 
                 linewidth=linewidth,
-                label=f"t={i}")
+                label=f"m={i}")
     
     # 添加图例和标签
     plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0), fontsize=9, framealpha=0.9)
@@ -93,12 +93,12 @@ def visualize_wave_packet(
             fontsize=11, verticalalignment='top', 
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
-    # 设置 x 轴刻度：数据点对应 1-64，x轴刻度范围是 0-64
+    # 设置 x 轴刻度：数据点对应 0-63，x轴刻度范围是 0-64
     n_points = 2**config.n
-    x_ticks = list(range(0, n_points + 1, 8)) + [n_points]  
+    x_ticks = list(range(0, n_points, 8)) + [n_points-1]  
     x_tick_labels = [str(tick) for tick in x_ticks]
     plt.xticks(x_ticks, labels=x_tick_labels)  # 显式设置刻度位置和标签
-    plt.xlim(0, n_points)  # x 轴范围从 0 到 64
+    plt.xlim(0, n_points - 1)  # x 轴范围从 0 到 63
     
     # 开启网格显示，使用浅灰色
     plt.grid(True, alpha=0.5, linestyle='-', linewidth=0.8, color='gray')
