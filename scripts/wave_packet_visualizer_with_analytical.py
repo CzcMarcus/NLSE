@@ -108,9 +108,9 @@ def visualize_wave_packet(
         # 绘制解析解曲线（红色虚线）
         plt.plot(x, prob_density_analytical,
                 color='red',
-                linestyle='-.',
-                linewidth=2.5,
-                label='Analytical (m=100)')
+                linestyle='--',
+                linewidth=1.5,
+                label=' m=100 (analytical solution)')
     
     # 添加图例和标签
     plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0), fontsize=9, framealpha=0.9)
