@@ -4,8 +4,14 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+import os
 from typing import Tuple, Optional
 from numpy.typing import NDArray
+
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from func_models.analytical_solutions import soliton_analytical_folded
 
 
