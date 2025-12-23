@@ -2,10 +2,16 @@
 经典伪谱分裂步法求解非线性薛定谔方程
 """
 
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple, Optional
 from numpy.typing import NDArray
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from func_models.config import SimulationConfig
 
 
 def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
@@ -111,7 +117,7 @@ class PseudoSpectralSplitStepSolver:
         return np.array(psi_history), np.array(times)
 
 
-def run_simulation():
+def run_simulation(output_dir: str = "."):
     """
     运行经典伪谱分裂步模拟
     """
@@ -120,7 +126,7 @@ def run_simulation():
     a = 2.0             # 孤子宽度
     x0 = -1.0           # 初始位置
     v = 10.0            # 速度
-    s = 1            # 非线性系数（注意：参考代码中 s=4 对应论文 s=1）
+    s = 1               # 非线性系数
     total_time = 0.3
     num_steps = 100
     dt = total_time / num_steps
@@ -154,8 +160,25 @@ def run_simulation():
     plt.ylabel("$|\\Psi|^2$")
     plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0))
     plt.tight_layout()
-    plt.savefig("./image_classical.png", dpi=150, bbox_inches="tight")
-    np.savez("./data_classical.npz", psi=psi, x=x, t=np.linspace(0, total_time, num_steps+1))
+
+    os.makedirs(output_dir, exist_ok=True)
+    plot_path = os.path.join(output_dir, "image_classic.png")
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+
+    # 保存数据
+    config = SimulationConfig(
+        n=n,
+        x0=x0,
+        a=a,
+        v=v,
+        s=s,
+        time_steps=num_steps,
+        dt=dt,
+    )
+    data_path = os.path.join(output_dir, "classic_nlse_data.npz")
+    np.savez(data_path, psi=psi, config=config, x=x, t=np.linspace(0, total_time, num_steps+1))
+    print(f"Data saved to: {data_path}")
+
     plt.show()
 
     return solver, psi
