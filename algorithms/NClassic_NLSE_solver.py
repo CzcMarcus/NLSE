@@ -1,18 +1,22 @@
 """
-归一化经典伪谱分裂步法求解非线性薛定谔方程
-
-在每个时间步后对波函数进行归一化，保持归一化条件
+非经典伪谱分裂步法求解非线性薛定谔方程（每个时间步后手动归一化）
 """
 
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple, Optional
 from numpy.typing import NDArray
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from func_models.config import SimulationConfig
+
 
 def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
     """
-    非线性薛定谔方程的解析孤子解（在整个实数轴上）。
+    非线性薛定谔方程的解析孤子解（在整个实数轴上）
     
     数学表达式：
         ψ(x,t) = a / cosh(a*(x-x0-v*t)) * exp(i*v*(x-x0) + i*(a²-v²)*t/2)
@@ -32,7 +36,7 @@ def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> N
 
 def soliton_analytical_folded(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
     """
-    将解析孤子解折叠到周期区间 [-π, π] 上。
+    将解析孤子解折叠到周期区间 [-π, π] 上
     """
     candidates = [soliton_analytical(t, x + i*2*np.pi, x0, a, v) for i in range(-2, 3)]
     result = np.zeros_like(x, dtype=complex)
@@ -42,17 +46,15 @@ def soliton_analytical_folded(t: float, x: NDArray, x0: float, a: float, v: floa
     return result
 
 
-class NormalizedPseudoSpectralSplitStepSolver:
+class PseudoSpectralSplitStepSolver:
     """
-    归一化经典伪谱分裂步算法
+    经典伪谱分裂步算法
     
     算法步骤：
     1. 线性步（动量空间）：
         ψ̃ = F⁻¹[ exp(-i/2 * k² * dt) * F(ψ) ] （含 fftshift 和相位校正）
     2. 非线性 Euler 步：
         ψ(t+dt) = ψ̃ + i s dt |ψ̃|² ψ̃
-    3. 归一化：
-        ψ(t+dt) = ψ(t+dt) / ||ψ(t+dt)||
     """
 
     def __init__(self, n: int = 6, s: float = 1.0, dt: float = 0.01):
@@ -65,11 +67,11 @@ class NormalizedPseudoSpectralSplitStepSolver:
         self.x = np.linspace(-np.pi, np.pi, self.N, endpoint=False)
         
         # 波数：k_j = -N/2 + j, j = 0, ..., N-1
-        self.k = np.arange(-self.N//2, self.N//2)  # shape (N,)
+        self.k = np.arange(-self.N//2, self.N//2)
 
     def step(self, psi: NDArray) -> NDArray:
         """
-        执行一个时间步，并在最后归一化
+        执行一个时间步
         """
         # --- Step 1: 线性演化（动量空间）---
         psi_k = np.fft.fft(psi)                     # FFT
@@ -91,15 +93,11 @@ class NormalizedPseudoSpectralSplitStepSolver:
         nonlinear_term = 1j * self.s * self.dt * np.abs(psi_tilde)**2 * psi_tilde
         psi_next = psi_tilde + nonlinear_term
         
-        # --- Step 3: 归一化 ---
-        norm = np.linalg.norm(psi_next)
-        psi_next = psi_next / norm
-        
         return psi_next
 
     def propagate(self, psi0: NDArray, num_steps: int, save_every: int = 1) -> Tuple[NDArray, NDArray]:
         """
-        传播波函数多个时间步。
+        传播波函数多个时间步
         """
         psi = psi0.copy()
         save_indices = sorted(set(list(range(0, num_steps, save_every)) + [num_steps]))
@@ -119,32 +117,56 @@ class NormalizedPseudoSpectralSplitStepSolver:
         return np.array(psi_history), np.array(times)
 
 
-def run_simulation():
+def normalize_psi(psi: NDArray, a: float, dx: float) -> NDArray:
     """
-    运行归一化经典伪谱分裂步模拟
+    归一化波函数，使其满足物理归一化条件：∫|Ψ|² dx = 2a
+    
+    离散形式：∑|Ψ_i|² * Δx = 2a
+    
+    Args:
+        psi: 波函数数组
+        a: 孤子宽度参数
+        dx: 空间步长
+    
+    Returns:
+        归一化后的波函数
+    """
+    # 计算当前归一化：∑|Ψ_i|² * Δx
+    current_norm_squared = np.sum(np.abs(psi)**2) * dx
+    # 目标归一化：2a
+    target_norm_squared = 2 * a
+    
+    # 计算归一化因子
+    if current_norm_squared > 0:
+        scale = np.sqrt(target_norm_squared / current_norm_squared)
+        return psi * scale
+    else:
+        return psi
+
+
+def run_simulation(output_dir: str = "."):
+    """
+    运行非经典伪谱分裂步模拟（每个时间步后手动归一化）
     """
     # ========== 参数设置 ==========
     n = 6               # 2^6 = 64 points
     a = 2.0             # 孤子宽度
     x0 = -1.0           # 初始位置
     v = 10.0            # 速度
-    s = 4               # 非线性系数
+    s = 1               # 非线性系数
     total_time = 0.3
     num_steps = 100
     dt = total_time / num_steps
 
     # ========== 初始化求解器和初始条件 ==========
-    solver = NormalizedPseudoSpectralSplitStepSolver(n=n, s=s, dt=dt)
+    solver = PseudoSpectralSplitStepSolver(n=n, s=s, dt=dt)
     x = solver.x
+    dx = x[1] - x[0]  # 空间步长
     psi0 = soliton_analytical_folded(0, x, x0, a, v)
-    
-    # 归一化初始条件
-    norm0 = np.linalg.norm(psi0)
-    psi0 = psi0 / norm0
 
-    print(f"Starting normalized classical simulation:")
-    print(f"  n={n}, N={solver.N}, dt={dt:.6f}, steps={num_steps}")
-    print(f"  Soliton: a={a}, x0={x0}, v={v}, s={s}")
+    print(f"Starting non-classical simulation (with normalization):")
+    print(f"n={n}, N={solver.N}, dt={dt:.6f}, steps={num_steps}")
+    print(f"Soliton: a={a}, x0={x0}, v={v}, s={s}")
 
     # ========== 时间演化 ==========
     psi = np.zeros((num_steps + 1, solver.N), dtype=complex)
@@ -153,6 +175,8 @@ def run_simulation():
 
     for i in range(num_steps):
         current_psi = solver.step(current_psi)
+        # 每个时间步后手动归一化
+        current_psi = normalize_psi(current_psi, a, dx)
         psi[i + 1, :] = current_psi
 
     print("Simulation completed!")
@@ -166,8 +190,25 @@ def run_simulation():
     plt.ylabel("$|\\Psi|^2$")
     plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0))
     plt.tight_layout()
-    plt.savefig("./image_nclassical.png", dpi=150, bbox_inches="tight")
-    np.savez("./data_nclassical.npz", psi=psi, x=x, t=np.linspace(0, total_time, num_steps+1))
+
+    os.makedirs(output_dir, exist_ok=True)
+    plot_path = os.path.join(output_dir, "image_nclassic.png")
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+
+    # 保存数据
+    config = SimulationConfig(
+        n=n,
+        x0=x0,
+        a=a,
+        v=v,
+        s=s,
+        time_steps=num_steps,
+        dt=dt,
+    )
+    data_path = os.path.join(output_dir, "nclassic_nlse_data.npz")
+    np.savez(data_path, psi=psi, config=config, x=x, t=np.linspace(0, total_time, num_steps+1))
+    print(f"Data saved to: {data_path}")
+
     plt.show()
 
     return solver, psi
