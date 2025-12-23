@@ -6,38 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple, Optional
 from numpy.typing import NDArray
-
-
-def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
-    """
-    非线性薛定谔方程的解析孤子解（在整个实数轴上）。
-    
-    数学表达式：
-        ψ(x,t) = a / cosh(a*(x-x0-v*t)) * exp(i*v*(x-x0) + i*(a²-v²)*t/2)
-    
-    Args:
-        t: 时间
-        x: 空间位置数组
-        x0: 初始位置
-        a: 孤子宽度参数
-        v: 孤子传播速度
-    
-    Returns:
-        孤子解的复振幅值
-    """
-    return a / np.cosh(a*(x - x0 - v*t)) * np.exp(1j*v*(x - x0) + 1j*(a**2 - v**2)*t/2.0)
-
-
-def soliton_analytical_folded(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
-    """
-    将解析孤子解折叠到周期区间 [-π, π] 上。
-    """
-    candidates = [soliton_analytical(t, x + i*2*np.pi, x0, a, v) for i in range(-2, 3)]
-    result = np.zeros_like(x, dtype=complex)
-    for i in range(len(x)):
-        max_idx = np.argmax([np.abs(cand[i]) for cand in candidates])
-        result[i] = candidates[max_idx][i]
-    return result
+from func_models.analytical_solutions import soliton_analytical_folded
 
 
 class PseudoSpectralSplitStepSolver:
