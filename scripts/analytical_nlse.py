@@ -102,7 +102,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # 使用与 q_nlse.py 相同的配置参数
+    # 配置参数
     config = SimulationConfig(
         n=6,
         d=12,
