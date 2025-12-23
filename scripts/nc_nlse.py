@@ -1,140 +1,218 @@
 """
-NLSE 的归一化经典伪谱分裂步法模拟
-
-使用归一化的经典一阶伪谱分裂步法求解 NLSE
-在每个时间步后手动对解进行归一化，保持波函数的归一化条件
+非经典伪谱分裂步法求解非线性薛定谔方程（每个时间步后手动归一化）
 """
 
-
-import numpy as np
-import sys
 import os
-from typing import Optional, Tuple
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import Tuple, Optional
+from numpy.typing import NDArray
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from func_models.config import SimulationConfig
 
 
-def classical_nlse_step(
-    psi_prev: np.ndarray,
-    s: float,
-    delta_t: float
-) -> np.ndarray:
+def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
     """
-    经典一阶 split-step 方法求解 NLSE: i ∂ψ/∂t = -1/2 ∂²ψ/∂x² - s |ψ|² ψ
+    非线性薛定谔方程的解析孤子解（在整个实数轴上）
     
-    步骤:
-      1. 线性步（动能项）: ψ_tilde = IFFT[exp(-i Δt/2 * k²) * FFT[ψ_prev]]
-      2. 非线性步（欧拉显式）: ψ_next = ψ_tilde + i s Δt |ψ_tilde|² ψ_tilde
+    数学表达式：
+        ψ(x,t) = a / cosh(a*(x-x0-v*t)) * exp(i*v*(x-x0) + i*(a²-v²)*t/2)
     
     Args:
-        psi_prev: 上一时刻的波函数 (复数数组, shape=(N,))
-        s: 非线性系数 (s>0: 聚焦, s<0: 散焦)
-        delta_t: 时间步长
+        t: 时间
+        x: 空间位置数组
+        x0: 初始位置
+        a: 孤子宽度参数
+        v: 孤子传播速度
     
     Returns:
-        psi_next: 当前时刻的波函数
+        孤子解的复振幅值
     """
-    # ===== Step 1: 线性演化（动能项） via FFT =====
-    # 转换到动量空间（傅里叶变换）
-    # fftshift 将零频率移到中心，便于处理
-    psi_tilde = np.fft.fftshift(np.fft.fft(psi_prev))
-    
-    # 在动量空间应用拉普拉斯算子的演化
-    # 演化算子：exp(-i*dt/2 * k²)
-    # 这里 k 的范围是 -N/2 到 N/2-1，其中 N = len(psi_prev)
-    N = len(psi_prev)
-    k_values = np.linspace(-N/2, N/2-1, N)
-    psi_tilde *= np.exp(-1j * delta_t/2 * np.square(k_values))
-    
-    # 校正因 fftshift 和离散波数定义引入的全局相位偏移，确保数值解与解析解的相位一致
-    psi_tilde *= np.exp(1j * delta_t/2 * (-N/2)**2)
-    
-    # 转换回位置空间（逆傅里叶变换）
-    psi_tilde = np.fft.ifft(np.fft.ifftshift(psi_tilde))
-    
-    # ===== Step 2: 非线性演化（显式欧拉步） =====
-    # NLSE: i ∂ψ/∂t = ... - s |ψ|² ψ  ⇒  ∂ψ/∂t = i s |ψ|² ψ + ...
-    # 显式欧拉: ψ_{n+1} = ψ_n + Δt * (i s |ψ_n|² ψ_n)
-    nonlinear_increment = 1j * s * np.abs(psi_tilde)**2 * psi_tilde
-    psi_next = psi_tilde + delta_t * nonlinear_increment
-    
-    return psi_next
+    return a / np.cosh(a*(x - x0 - v*t)) * np.exp(1j*v*(x - x0) + 1j*(a**2 - v**2)*t/2.0)
 
 
-def run_simulation(
-    config: Optional[SimulationConfig] = None,
-    output_dir: str = "."
-) -> Tuple[None, np.ndarray, SimulationConfig]:
+def soliton_analytical_folded(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
     """
-    NLSE 的归一化经典伪谱分裂步法模拟
+    将解析孤子解折叠到周期区间 [-π, π] 上
+    """
+    candidates = [soliton_analytical(t, x + i*2*np.pi, x0, a, v) for i in range(-2, 3)]
+    result = np.zeros_like(x, dtype=complex)
+    for i in range(len(x)):
+        max_idx = np.argmax([np.abs(cand[i]) for cand in candidates])
+        result[i] = candidates[max_idx][i]
+    return result
+
+
+class PseudoSpectralSplitStepSolver:
+    """
+    经典伪谱分裂步算法
     
-    在每个时间步后对波函数进行归一化，保持归一化条件
+    算法步骤：
+    1. 线性步（动量空间）：
+        ψ̃ = F⁻¹[ exp(-i/2 * k² * dt) * F(ψ) ] （含 fftshift 和相位校正）
+    2. 非线性 Euler 步：
+        ψ(t+dt) = ψ̃ + i s dt |ψ̃|² ψ̃
+    """
+
+    def __init__(self, n: int = 6, s: float = 1.0, dt: float = 0.01):
+        self.n = n
+        self.N = 2**n
+        self.s = s
+        self.dt = dt
+        
+        # 空间网格：x ∈ [-π, π)
+        self.x = np.linspace(-np.pi, np.pi, self.N, endpoint=False)
+        
+        # 波数：k_j = -N/2 + j, j = 0, ..., N-1
+        self.k = np.arange(-self.N//2, self.N//2)
+
+    def step(self, psi: NDArray) -> NDArray:
+        """
+        执行一个时间步
+        """
+        # --- Step 1: 线性演化（动量空间）---
+        psi_k = np.fft.fft(psi)                     # FFT
+        psi_k_shifted = np.fft.fftshift(psi_k)      # shift zero freq to center
+        
+        # 应用线性相位：exp(-i * 0.5 * k^2 * dt)
+        phase = np.exp(-1j * 0.5 * self.k**2 * self.dt)
+        psi_k_evolved_shifted = psi_k_shifted * phase
+        
+        # 相位校正（补偿 k 起点为 -N/2 引入的全局相位）
+        correction = np.exp(1j * 0.5 * self.dt * (self.N//2)**2)
+        psi_k_evolved_shifted *= correction
+        
+        # 逆变换回位置空间
+        psi_k_evolved = np.fft.ifftshift(psi_k_evolved_shifted)
+        psi_tilde = np.fft.ifft(psi_k_evolved)
+        
+        # --- Step 2: 非线性 Euler 显式步 ---
+        nonlinear_term = 1j * self.s * self.dt * np.abs(psi_tilde)**2 * psi_tilde
+        psi_next = psi_tilde + nonlinear_term
+        
+        return psi_next
+
+    def propagate(self, psi0: NDArray, num_steps: int, save_every: int = 1) -> Tuple[NDArray, NDArray]:
+        """
+        传播波函数多个时间步
+        """
+        psi = psi0.copy()
+        save_indices = sorted(set(list(range(0, num_steps, save_every)) + [num_steps]))
+        psi_history = []
+        times = []
+        current_save_idx = 0
+
+        for step in range(num_steps + 1):
+            t = step * self.dt
+            if current_save_idx < len(save_indices) and step == save_indices[current_save_idx]:
+                psi_history.append(psi.copy())
+                times.append(t)
+                current_save_idx += 1
+            if step < num_steps:
+                psi = self.step(psi)
+
+        return np.array(psi_history), np.array(times)
+
+
+def normalize_psi(psi: NDArray, a: float, dx: float) -> NDArray:
+    """
+    归一化波函数，使其满足物理归一化条件：∫|Ψ|² dx = 2a
+    
+    离散形式：∑|Ψ_i|² * Δx = 2a
     
     Args:
-        config: 模拟配置参数，如果为 None 则使用默认配置
-        output_dir: 输出目录，用于保存结果图像和数据
+        psi: 波函数数组
+        a: 孤子宽度参数
+        dx: 空间步长
     
     Returns:
-        parameters: None（经典方法不使用参数）
-        psi: 各时间步的波函数数组，形状为 (time_steps+1, 2^n)，类型为 complex
-        config: 使用的模拟配置对象
+        归一化后的波函数
     """
-    if config is None:
-        config = SimulationConfig()
+    # 计算当前归一化：∑|Ψ_i|² * Δx
+    current_norm_squared = np.sum(np.abs(psi)**2) * dx
+    # 目标归一化：2a
+    target_norm_squared = 2 * a
     
-    # ===== 生成初始条件 =====
-    print("Generating initial condition...")
-    initial_condition = config.generate_initial_condition()
-    x = np.linspace(-np.pi, np.pi, 2**config.n, endpoint=False)
-    
-    # ===== 存储所有时间步的波函数 =====
-    # 形状：(time_steps + 1, 2**n)，包含初始态和所有演化后的态
-    psi = np.zeros((config.time_steps+1, 2**config.n), dtype=complex)
-    psi[0, :] = initial_condition
-    
-    # ===== 时间演化循环 =====
-    print(f"\nStarting simulation with {config.time_steps} time steps...")
-    print("=" * 60)
-    
-    for i in range(config.time_steps):
-        print(f"Step {i+1}/{config.time_steps}...", end=" ", flush=True)
-        
-        # 执行一个时间步的演化
-        psi[i+1, :] = classical_nlse_step(
-            psi[i, :], s=config.s, delta_t=config.dt
-        )
-        
-        # 归一化：在每个时间步后手动归一化波函数
-        norm = np.linalg.norm(psi[i+1, :])
-        psi[i+1, :] /= norm
-        
-        # 打印归一化前的范数（用于监控）
-        print(f"Norm before normalization: {norm:.10f}")
-    
-    print("=" * 60)
+    # 计算归一化因子
+    if current_norm_squared > 0:
+        scale = np.sqrt(target_norm_squared / current_norm_squared)
+        return psi * scale
+    else:
+        return psi
+
+
+def run_simulation(output_dir: str = "."):
+    """
+    运行非经典伪谱分裂步模拟（每个时间步后手动归一化）
+    """
+    # ========== 参数设置 ==========
+    n = 6               # 2^6 = 64 points
+    a = 2.0             # 孤子宽度
+    x0 = -1.0           # 初始位置
+    v = 10.0            # 速度
+    s = 1               # 非线性系数
+    total_time = 0.3
+    num_steps = 100
+    dt = total_time / num_steps
+
+    # ========== 初始化求解器和初始条件 ==========
+    solver = PseudoSpectralSplitStepSolver(n=n, s=s, dt=dt)
+    x = solver.x
+    dx = x[1] - x[0]  # 空间步长
+    psi0 = soliton_analytical_folded(0, x, x0, a, v)
+
+    print(f"Starting non-classical simulation (with normalization):")
+    print(f"n={n}, N={solver.N}, dt={dt:.6f}, steps={num_steps}")
+    print(f"Soliton: a={a}, x0={x0}, v={v}, s={s}")
+
+    # ========== 时间演化 ==========
+    psi = np.zeros((num_steps + 1, solver.N), dtype=complex)
+    psi[0, :] = psi0
+    current_psi = psi0.copy()
+
+    for i in range(num_steps):
+        current_psi = solver.step(current_psi)
+        # 每个时间步后手动归一化
+        current_psi = normalize_psi(current_psi, a, dx)
+        psi[i + 1, :] = current_psi
+
     print("Simulation completed!")
-    
-    # ===== 保存数值结果 =====
+
+    # ========== 可视化 ==========
+    plt.figure(figsize=(10, 6))
+    for i in range(0, num_steps + 1, 10):
+        plt.plot(x / np.pi, np.abs(psi[i, :])**2, label=f"t={i*dt:.3f}")
+
+    plt.xlabel("$x$ [$\\pi$]")
+    plt.ylabel("$|\\Psi|^2$")
+    plt.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0))
+    plt.tight_layout()
+
+    os.makedirs(output_dir, exist_ok=True)
+    plot_path = os.path.join(output_dir, "image_nclassic.png")
+    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+
+    # 保存数据
+    config = SimulationConfig(
+        n=n,
+        x0=x0,
+        a=a,
+        v=v,
+        s=s,
+        time_steps=num_steps,
+        dt=dt,
+    )
     data_path = os.path.join(output_dir, "nclassic_nlse_data.npz")
-    np.savez(data_path, psi=psi, config=config)
+    np.savez(data_path, psi=psi, config=config, x=x, t=np.linspace(0, total_time, num_steps+1))
     print(f"Data saved to: {data_path}")
-    
-    return None, psi, config
+
+    plt.show()
+
+    return solver, psi
 
 
 if __name__ == "__main__":
-    # 自定义使用归一化经典伪谱分裂步法求解 NLSE 的配置
-    config = SimulationConfig(
-        n=6,
-        x0=-1,
-        a=2,
-        v=10,
-        s=4,
-        time_steps=100,
-        dt=3e-3,
-    )
-    
-    # 运行模拟
-    parameters, psi, config = run_simulation(config)
+    run_simulation()
