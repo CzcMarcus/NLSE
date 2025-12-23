@@ -16,7 +16,7 @@ from func_models.config import SimulationConfig
 
 def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
     """
-    非线性薛定谔方程的解析孤子解（在整个实数轴上）。
+    非线性薛定谔方程的解析孤子解（在整个实数轴上）
     
     数学表达式：
         ψ(x,t) = a / cosh(a*(x-x0-v*t)) * exp(i*v*(x-x0) + i*(a²-v²)*t/2)
@@ -36,7 +36,7 @@ def soliton_analytical(t: float, x: NDArray, x0: float, a: float, v: float) -> N
 
 def soliton_analytical_folded(t: float, x: NDArray, x0: float, a: float, v: float) -> NDArray:
     """
-    将解析孤子解折叠到周期区间 [-π, π] 上。
+    将解析孤子解折叠到周期区间 [-π, π] 上
     """
     candidates = [soliton_analytical(t, x + i*2*np.pi, x0, a, v) for i in range(-2, 3)]
     result = np.zeros_like(x, dtype=complex)
@@ -48,7 +48,7 @@ def soliton_analytical_folded(t: float, x: NDArray, x0: float, a: float, v: floa
 
 class PseudoSpectralSplitStepSolver:
     """
-    经典伪谱分裂步算法（严格效仿参考代码中公式12的实现）
+    经典伪谱分裂步算法
     
     算法步骤：
     1. 线性步（动量空间）：
@@ -67,7 +67,7 @@ class PseudoSpectralSplitStepSolver:
         self.x = np.linspace(-np.pi, np.pi, self.N, endpoint=False)
         
         # 波数：k_j = -N/2 + j, j = 0, ..., N-1
-        self.k = np.arange(-self.N//2, self.N//2)  # shape (N,)
+        self.k = np.arange(-self.N//2, self.N//2)
 
     def step(self, psi: NDArray) -> NDArray:
         """
@@ -97,7 +97,7 @@ class PseudoSpectralSplitStepSolver:
 
     def propagate(self, psi0: NDArray, num_steps: int, save_every: int = 1) -> Tuple[NDArray, NDArray]:
         """
-        传播波函数多个时间步。
+        传播波函数多个时间步
         """
         psi = psi0.copy()
         save_indices = sorted(set(list(range(0, num_steps, save_every)) + [num_steps]))
@@ -137,8 +137,8 @@ def run_simulation(output_dir: str = "."):
     psi0 = soliton_analytical_folded(0, x, x0, a, v)
 
     print(f"Starting classical simulation:")
-    print(f"  n={n}, N={solver.N}, dt={dt:.6f}, steps={num_steps}")
-    print(f"  Soliton: a={a}, x0={x0}, v={v}, s={s}")
+    print(f"n={n}, N={solver.N}, dt={dt:.6f}, steps={num_steps}")
+    print(f"Soliton: a={a}, x0={x0}, v={v}, s={s}")
 
     # ========== 时间演化 ==========
     psi = np.zeros((num_steps + 1, solver.N), dtype=complex)
