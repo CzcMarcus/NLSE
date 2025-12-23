@@ -807,7 +807,7 @@ psi[0, :] = initial_condition
 
 # 从每个时间步的参数生成对应的量子态
 for i in range(time_steps):
-    # 从参数生成状态向量，给出优化后的参数对应的实际波函数
+    # 由参数生成的量子态近似物理波函数形状，但范数为量子态规范
     psi[i+1, :] = stateFromParameters(ansatz, parameters[i, 0:2*n*(d+1)], n, d)
 
 
