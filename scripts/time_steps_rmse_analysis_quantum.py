@@ -212,8 +212,9 @@ if __name__ == "__main__":
     )
     
     # 指定的时间步数列表
-    time_steps_list = [10, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 250, 300]
-    
+    # time_steps_list = [10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 250, 300]
+    time_steps_list = [10, 20, 40, 60]
+
     # 输出目录
     output_dir = "/public/home/caozicheng/NLSE/result"
     
