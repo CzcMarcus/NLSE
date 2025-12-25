@@ -41,7 +41,7 @@ def compute_rmse_at_t_quantum(psi_num: np.ndarray, psi_ana: np.ndarray, config: 
     dx = x_grid[1] - x_grid[0]
     
     # 正确还原物理波函数模长
-    total_norm = 2 * config.a / config.s  # ∫|Ψ|² dx = 2a/s
+    total_norm = 2 * config.a  # ∫|Ψ|² dx = 2a/s = 2a
     scale = np.sqrt(total_norm / dx)  # 因为 ∑|Ψ_i|² = total_norm / dx
     psi_num_phys_mod = np.abs(psi_num) * scale  # 还原后的 |Ψ_num(x)|
     
@@ -202,7 +202,7 @@ if __name__ == "__main__":
         x0=-1,
         a=2,
         v=10,
-        s=1,
+        s=4,
         time_steps=100,  # 测试中忽略
         dt=3e-3,  # 测试中忽略
         initial_runs=10,
