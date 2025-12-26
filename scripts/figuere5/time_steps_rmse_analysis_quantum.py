@@ -311,7 +311,7 @@ if __name__ == "__main__":
         config=config,
         d_list=d_list,
         dt=dt,
-        min_steps=0,
+        min_steps=1,
         max_steps=100,
         output_dir=output_dir
     )
