@@ -187,7 +187,7 @@ if __name__ == "__main__":
     analyze_time_steps_effect(
         config=config,
         dt=dt,
-        min_steps=0,
+        min_steps=1,
         max_steps=100,
         output_dir=output_dir
     )
