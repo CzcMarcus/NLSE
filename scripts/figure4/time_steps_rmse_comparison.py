@@ -139,8 +139,8 @@ def compare_time_steps_effect(
         plt.plot(time_steps_quantum, rmse_array_quantum, 'g-', linewidth=1.5, 
                  alpha=0.8, marker='o', markersize=6, label='Quantum Algorithm')
     
-    plt.xlabel("Time Steps", fontsize=14)
-    plt.ylabel("RMSE at t=0.3s", fontsize=14)
+    plt.xlabel("Number of Time Steps", fontsize=14)
+    plt.ylabel("Root Mean Square Error (t=0.3s)", fontsize=14)
     plt.title("RMSE vs Time Steps at t=0.3s", fontsize=16, fontweight='bold')
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=12)
