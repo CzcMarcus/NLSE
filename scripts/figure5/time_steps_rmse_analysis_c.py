@@ -181,7 +181,7 @@ if __name__ == "__main__":
     dt = 1e-3
     
     # 输出目录
-    output_dir = "/public/home/caozicheng/NLSE/scripts/figuere5"
+    output_dir = "/public/home/caozicheng/NLSE/scripts/figure5"
     
     # 运行分析
     analyze_time_steps_effect(
