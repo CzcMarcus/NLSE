@@ -186,7 +186,7 @@ def plot_comparison(
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(0, 0.1)  # 设置x轴范围为0-0.1s
     ax1.xaxis.set_major_locator(MultipleLocator(0.005))
-    ax1.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}' if round(x * 100) % 2 == 0 else ''))
+    ax1.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}' if abs(round(x / 0.02) - x / 0.02) < 1e-6 else ''))
     
     # 右图：经典算法 + 量子算法d=11,12,13
     d_right = [11, 12, 13]
@@ -213,7 +213,7 @@ def plot_comparison(
     ax2.grid(True, alpha=0.3)
     ax2.set_xlim(0, 0.1)  # 设置x轴范围为0-0.1s
     ax2.xaxis.set_major_locator(MultipleLocator(0.005))
-    ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}' if round(x * 100) % 2 == 0 else ''))
+    ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}' if abs(round(x / 0.02) - x / 0.02) < 1e-6 else ''))
     
     plt.tight_layout()
     
