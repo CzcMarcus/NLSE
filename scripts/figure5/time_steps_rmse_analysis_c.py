@@ -38,44 +38,6 @@ def compute_rmse_at_t(psi_num: np.ndarray, psi_ana: np.ndarray) -> float:
     return rmse
 
 
-def run_single_test(time_steps: int, dt: float, config_base: SimulationConfig) -> float:
-    """
-    运行单次测试：使用经典算法，固定dt，指定时间步数运行模拟，计算最终时刻的RMSE
-    
-    Args:
-        time_steps: 时间步数
-        dt: 固定时间步长
-        config_base: 基础配置
-    
-    Returns:
-        最终时刻的RMSE值（经典算法数值解与解析解的误差）
-    """
-    # 创建经典伪谱分裂步求解器，使用固定的dt
-    solver = PseudoSpectralSplitStepSolver(
-        n=config_base.n,
-        s=config_base.s,
-        dt=dt
-    )
-    
-    # 初始化：t=0时刻的解析解
-    x = solver.x
-    psi0 = soliton_analytical_folded(0, x, config_base.x0, config_base.a, config_base.v)
-    
-    # 运行模拟
-    current_psi = psi0.copy()
-    for _ in range(time_steps):
-        current_psi = solver.step(current_psi)
-    
-    # 计算最终时刻的解析解
-    t_final = time_steps * dt
-    psi_analytical = soliton_analytical_folded(t_final, x, config_base.x0, config_base.a, config_base.v)
-    
-    # 计算RMSE
-    rmse = compute_rmse_at_t(current_psi, psi_analytical)
-    
-    return rmse
-
-
 def analyze_time_steps_effect(
     config: SimulationConfig,
     dt: float = 1e-3,
@@ -85,34 +47,58 @@ def analyze_time_steps_effect(
 ):
     """
     分析时间步数对经典算法RMSE的影响（固定dt）
+    只运行一次完整模拟，在每个时间步记录RMSE，保证数据连续性
     
     Args:
         config: 基础配置参数
         dt: 固定时间步长
-        min_steps: 最小时间步数
-        max_steps: 最大时间步数
+        min_steps: 最小时间步数（从第几步开始记录）
+        max_steps: 最大时间步数（运行的总步数）
         output_dir: 输出目录
     """
     print("=" * 60)
     print("时间步数对RMSE影响分析 - 经典算法（固定dt）")
     print(f"固定时间步长: dt = {dt}")
-    print(f"测试范围: {min_steps} - {max_steps} 步")
+    print(f"运行总步数: {max_steps} 步")
+    print(f"记录范围: {min_steps} - {max_steps} 步")
     print(f"对应总时间范围: {min_steps*dt:.3f}s - {max_steps*dt:.3f}s")
     print(f"配置参数: n={config.n}, a={config.a}, x0={config.x0}, v={config.v}, s={config.s}")
     print("=" * 60)
+    
+    # 创建经典伪谱分裂步求解器，使用固定的dt
+    solver = PseudoSpectralSplitStepSolver(
+        n=config.n,
+        s=config.s,
+        dt=dt
+    )
+    
+    # 初始化：t=0时刻的解析解
+    x = solver.x
+    psi0 = soliton_analytical_folded(0, x, config.x0, config.a, config.v)
     
     # 存储结果
     time_steps_list = np.arange(min_steps, max_steps + 1)
     rmse_list = []
     
-    # 对每个时间步数进行测试
-    for steps in tqdm(time_steps_list, desc="测试进度"):
-        try:
-            rmse = run_single_test(steps, dt, config)
-            rmse_list.append(rmse)
-        except Exception as e:
-            print(f"\n警告: 时间步数 {steps} 测试失败: {e}")
-            rmse_list.append(np.nan)
+    # 运行一次完整模拟，在每个时间步记录RMSE
+    current_psi = psi0.copy()
+    
+    # 如果min_steps > 1，先运行到min_steps-1步（不记录）
+    for step in range(1, min_steps):
+        current_psi = solver.step(current_psi)
+    
+    # 从min_steps开始，每步都记录RMSE
+    for step in tqdm(range(min_steps, max_steps + 1), desc="运行模拟并记录RMSE"):
+        # 执行一步
+        current_psi = solver.step(current_psi)
+        
+        # 计算当前时刻的解析解
+        t_current = step * dt
+        psi_analytical = soliton_analytical_folded(t_current, x, config.x0, config.a, config.v)
+        
+        # 计算RMSE
+        rmse = compute_rmse_at_t(current_psi, psi_analytical)
+        rmse_list.append(rmse)
     
     rmse_array = np.array(rmse_list)
     
